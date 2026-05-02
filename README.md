@@ -1,17 +1,17 @@
-# 🚀 Goldbach Checkpoint Verifier (4×10¹⁸ Scale)
+# Goldbach Checkpoint Verifier (4×10¹⁸ Scale)
 
 High-performance **Goldbach verification engine** for extremely large ranges with:
 
-- ✅ Checkpoint / Resume support  
-- ⚡ QHot witness reuse (~99.9% hit rate)  
-- 🔍 Anchor primes (bounded search)  
-- 🧠 Segmented sieve fallback  
-- 📦 Sieve-Q witness dump (MR-confirmed)  
-- 🔁 Independent reconstruction checker  
+-  Checkpoint / Resume support  
+-  QHot witness reuse (~99.9% hit rate)  
+-  Anchor primes (bounded search)  
+-  Segmented sieve fallback  
+-  Sieve-Q witness dump (MR-confirmed)  
+-  Independent reconstruction checker  
 
 ---
 
-## 📌 What this does
+##  What this does
 
 Verifies that every even number `N` in a given range satisfies:
 
@@ -19,11 +19,11 @@ Verifies that every even number `N` in a given range satisfies:
 N = p + q   (p and q are prime)
 ```
 
-⚠️ This is **computational verification**, not a formal proof.
+This is **computational verification**, not a formal proof.
 
 ---
 
-## 🧩 Core Ideas
+##  Core Ideas
 
 **QHot Cache**
 - Reuses recent `q` values  
@@ -39,7 +39,7 @@ N = p + q   (p and q are prime)
 
 ---
 
-## 📊 Example Run
+## Example Run
 
 ```
 Range: [4e18 .. 4e18 + 1e10]
@@ -55,7 +55,7 @@ Sieve ≈ 0.0832%
 
 ---
 
-## 📂 Repository Structure
+## Repository Structure
 
 ```
 src/
@@ -74,7 +74,7 @@ SHA256SUMS.txt
 
 ---
 
-## ⚙️ Build
+## Build
 
 ```bash
 g++ -O3 -march=native -std=gnu++17 -fopenmp src/goldbach_verifier_ckpt.cpp -o goldbach
@@ -86,7 +86,7 @@ g++ -O3 -march=native -std=gnu++17 tools/reconstruct_sieve_q_checker.cpp -o reco
 
 ---
 
-## ▶️ Run Verifier
+## Run Verifier
 
 ```bash
 ./goldbach <start> <end> <block_bits> <threads> [p_anchor_limit] [sample_limit]
@@ -100,7 +100,7 @@ Example:
 
 ---
 
-## 🔄 Resume from Checkpoint
+## Resume from Checkpoint
 
 ```bash
 ./goldbach  0 0 24 12 100000 10000 --resume
@@ -108,7 +108,7 @@ Example:
 
 ---
 
-## 🧪 Sieve-Q Dump Mode
+## Sieve-Q Dump Mode
 
 ```bash
 ./goldbach_sieve_q_dump ... --dump-sieve-q sieve_q_witness.csv
@@ -130,7 +130,7 @@ N,p,q
 
 ---
 
-## 🔁 Reconstruction Checker
+## Reconstruction Checker
 
 ```bash
 ./reconstruct_checker sieve_q_witness.csv
@@ -144,7 +144,7 @@ N,p,q
 
 ---
 
-## 🔐 Integrity
+## Integrity
 
 ```bash
 sha256sum -c SHA256SUMS.txt
@@ -152,15 +152,15 @@ sha256sum -c SHA256SUMS.txt
 
 ---
 
-## 📈 Current Status
+## Current Status
 
-- Verified: **up to 100 trillion evens (checkpointed)**  
+- Verified: **up to 220 trillion evens (checkpointed)**  
 - Misses: **0**  
 - Reconstruction check: **PASS**
 
 ---
 
-## 🧠 Key Insight
+## Key Insight
 
 Instead of storing all pairs (petabytes):
 
@@ -170,7 +170,7 @@ Store ~0.08% sieve witnesses → reconstruct 100% pairs
 
 ---
 
-## ⚠️ Notes
+## Notes
 
 - Not a formal mathematical proof  
 - Full output intentionally avoided (too large)  
@@ -178,6 +178,6 @@ Store ~0.08% sieve witnesses → reconstruct 100% pairs
 
 ---
 
-## 📜 License
+## License
 
 MIT
