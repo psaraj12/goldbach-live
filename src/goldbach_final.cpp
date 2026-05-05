@@ -12,8 +12,9 @@ using u32 = uint32_t;
 using u8  = uint8_t;
 
 // ------------------ Checkpoint Config ------------------
-static constexpr u64 CKPT_INTERVAL = 10000000000ULL;
-static const char* CKPT_FILE = "goldbach_checkpoint.csv";
+static constexpr u64 CKPT_INTERVAL = 100000000000ULL;
+static constexpr u64 SIEVE_SAMPLE_INTERVAL = 10000000000ULL; // 10 billion N-distance
+static const char* CKPT_FILE = "goldbach_checkpoint_speed.csv";
 
 static atomic<int> g_shutdown{0};
 
@@ -74,6 +75,14 @@ static bool is_prime64(u64 n) {
 
 static vector<u32> base_primes;
 
+// Static PHot: data-driven hot anchor primes tried before the normal scan.
+// Keep this list small to reduce tries/N without adding much overhead.
+static constexpr u32 PHOT[] = {
+    5, 3, 11, 13, 17, 19, 23, 29,
+    31, 37, 41, 43, 47, 53, 59, 61
+};
+
+
 void build_base_primes(u32 limit) {
     vector<bool> is_prime((size_t)limit + 1, true);
     is_prime[0] = false;
@@ -93,72 +102,28 @@ void build_base_primes(u32 limit) {
 }
 
 // ------------------ Segmented Sieve ------------------
-
-struct SegSieve {
-    u64 lo = 0, hi = 0;
-    vector<u8> bits;
-
-    void build(u64 slo, u64 shi) {
-        if (slo < 3) slo = 3;
-        if ((slo & 1ULL) == 0) ++slo;
-
-        lo = slo;
-        hi = shi;
-
-        u64 nbits  = (hi > lo) ? ((hi - lo) / 2 + 1) : 0;
-        u64 nbytes = (nbits + 7) / 8;
-
-        bits.assign((size_t)nbytes, 0xFF);
-
-        if ((nbits & 7ULL) && nbytes > 0)
-            bits[(size_t)nbytes - 1] &= (u8)((1u << (nbits & 7ULL)) - 1u);
-
-        for (u32 p : base_primes) {
-            u64 pp = (u64)p * p;
-            if (pp >= hi) break;
-
-            u64 start;
-            if (pp >= lo) {
-                start = pp;
-            } else {
-                u64 rem = lo % p;
-                start = (rem == 0) ? lo : lo + (p - rem);
-            }
-
-            if ((start & 1ULL) == 0) start += p;
-            if (start == p) start += 2ULL * p;
-
-            u64 b = (start - lo) >> 1;
-            for (; b < nbits; b += p)
-                bits[(size_t)(b >> 3)] &= (u8)~(1u << (b & 7));
-        }
-    }
-
-    inline bool is_prime(u64 q) const {
-        if (q < 3 || (q & 1ULL) == 0) return q == 2;
-        if (q < lo || q >= hi) return false;
-
-        u64 b = (q - lo) >> 1;
-        return (bits[(size_t)(b >> 3)] >> (b & 7)) & 1u;
-    }
-};
+//san temp removed for MR cheap calls
 
 // ------------------ Simple QHot ------------------
 
-static constexpr int QHOT_SIZE = 1024;
+//static constexpr int QHOT_SIZE = 1024;
 
 struct QHot {
-    u64 buf[QHOT_SIZE];
+    vector<u64> buf;
     int pos = 0;
     int count = 0;
-
+     int size = 1024;
+	 void init(int sz) {
+        size = sz;
+        buf.resize(size, 0);
+    }
     inline void record(u64 q) {
         if (q < 3 || ((q & 1ULL) == 0)) return;
 
-        if (count < QHOT_SIZE) {
+        if (count < size) {
             buf[pos] = q;
             ++pos;
-            if (pos == QHOT_SIZE) pos = 0;
+            if (pos == size) pos = 0;
             ++count;
             return;
         }
@@ -168,14 +133,19 @@ struct QHot {
         }
 
         ++pos;
-        if (pos == QHOT_SIZE) pos = 0;
+        if (pos == size) pos = 0;
     }
-
+inline bool contains_q(u64 q) const {
+    for (int i = 0; i < count; ++i) {
+        if (buf[i] == q) return true;
+    }
+    return false;
+}
     inline bool hit(u64 N, u64 p_limit, const vector<u8>& anchor_lookup,
                     u64& p_out, u64& q_out) const {
         for (int i = 0; i < count; ++i) {
             int idx = pos - 1 - i;
-            if (idx < 0) idx += QHOT_SIZE;
+            if (idx < 0) idx += size;
 
             u64 q = buf[idx];
             if (q >= N) continue;
@@ -280,7 +250,7 @@ static void save_checkpoint(u64 original_start, u64 original_end, u64 last_verif
     f << fixed << setprecision(6) << "# elapsed_sec=" << elapsed_sec << "\n";
     f << "N,p,q,source\n";
 
-    for (auto& s : all_samples) f << s << "\n";
+    for (const auto& s : all_samples) f << s << "\n";
 
     f.close();
     rename(tmp.c_str(), CKPT_FILE);
@@ -319,7 +289,7 @@ int main(int argc, char** argv) {
     int threads    = atoi(argv[4]);
     u64 p_anchor_limit = (argc >= 6) ? strtoull(argv[5], nullptr, 10) : 1000000ULL;
     u64 sample_limit   = (argc >= 7) ? strtoull(argv[6], nullptr, 10) : 10000ULL;
-
+      int qhot_size = (argc >= 8) ? atoi(argv[7]) : 1024;//san temp
     u64 cum_total = 0, cum_verified = 0, cum_tries = 0, cum_qhot = 0, cum_misses = 0;
     double cum_elapsed = 0.0;
     u64 original_start, original_end;
@@ -386,12 +356,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    cout << "goldbach_sieve_simple_qhot_verified\n";
+    cout << "goldbach_qhot_Mr_verified\n";
     cout << "Range: [" << start << " .. " << end << "]\n";
     cout << "Block bits: " << block_bits << " | Threads: " << threads << "\n";
-    cout << "P-anchor limit: " << p_anchor_limit << " | QHot size: " << QHOT_SIZE << "\n";
+    cout << "P-anchor limit: " << p_anchor_limit << " | QHot size: " << qhot_size << "\n";
     cout << "Checkpoint interval: " << CKPT_INTERVAL << " even numbers\n";
     cout << "Sample limit: " << sample_limit << "\n";
+    //cout << "SIEVE sample interval: " << SIEVE_SAMPLE_INTERVAL << " N-distance buckets\n";
     cout << "Building base primes up to " << prime_limit64 << "..." << flush;
 
     auto setup0 = chrono::steady_clock::now();
@@ -413,6 +384,27 @@ int main(int argc, char** argv) {
             anchor_lookup[(size_t)p] = 1;
         else
             break;
+    }
+
+    // SIEVE/cold-path sampling: capture at most one accepted SIEVE witness per 1T N-distance bucket.
+    // Resume-safe: existing sample rows mark their buckets as already collected.
+    u64 sieve_sample_bucket_count =
+        (original_end >= original_start)
+            ? ((original_end - original_start) / SIEVE_SAMPLE_INTERVAL + 2ULL)
+            : 1ULL;
+    vector<u8> sieve_sample_seen((size_t)sieve_sample_bucket_count, 0);
+
+    for (const string& s : all_samples) {
+        size_t comma = s.find(',');
+        if (comma == string::npos) continue;
+        try {
+            u64 sample_N = stoull(s.substr(0, comma));
+            if (sample_N >= original_start) {
+                u64 bucket = (sample_N - original_start) / SIEVE_SAMPLE_INTERVAL;
+                if (bucket < sieve_sample_seen.size())
+                    sieve_sample_seen[(size_t)bucket] = 1;
+            }
+        } catch (...) {}
     }
 
     // ---- Process in mega-chunks for checkpointing ----
@@ -439,22 +431,20 @@ int main(int argc, char** argv) {
 
         u64 c_total = 0, c_verified = 0, c_tries = 0, c_qhot = 0, c_misses = 0;
 
-        // Thread-0 sample buffer for this chunk
         vector<string> chunk_samples;
 
         auto t0 = chrono::steady_clock::now();
 
 #pragma omp parallel
         {
-            SegSieve seg;
             QHot qhot;
-
+            qhot.init(qhot_size);
 #ifdef _OPENMP
             int tid = omp_get_thread_num();
 #else
             int tid = 0;
 #endif
-
+            
             vector<string> local_samples;
             u64 l_total = 0, l_verified = 0, l_tries = 0, l_qhot = 0, l_misses = 0;
 
@@ -463,12 +453,7 @@ int main(int argc, char** argv) {
                 if (g_shutdown.load(memory_order_relaxed)) continue;
 
                 auto [blk, blk_end] = blocks[bi];
-
-                u64 lo = (blk > p_anchor_limit ? blk - p_anchor_limit : 3ULL);
-                u64 hi = blk_end + 2ULL;
-
-                seg.build(lo, hi);
-
+				
                 for (u64 N = blk; N <= blk_end; N += 2ULL) {
                     ++l_total;
 
@@ -477,29 +462,38 @@ int main(int argc, char** argv) {
                         ++l_verified;
                         ++l_qhot;
 
-                        if (tid == 0 && all_samples.size() + local_samples.size() < sample_limit) {
-                            local_samples.push_back(
-                                to_string(N) + "," + to_string(sp) + "," + to_string(sq) + ",QHOT");
-                        }
+                       
                         continue;
                     }
 
                     bool ok = false;
 
-                    for (u32 pr : base_primes) {
-                        if ((u64)pr > p_anchor_limit) break;
-                        if ((u64)pr >= N) break;
+                    // First try a small static PHot list derived from observed SIEVE/cold-path hits.
+                    for (u32 pr : PHOT) {
+                        if ((u64)pr > p_anchor_limit) continue;
+                        if ((u64)pr >= N) continue;
 
                         u64 q = N - pr;
                         ++l_tries;
 
-                        if (seg.is_prime(q) && is_prime64(q)) {
+                        if (qhot.contains_q(q) || is_prime64(q)) { // MR-only cold path
                             ++l_verified;
-                            qhot.record(q);
+                            if (!(qhot.contains_q(q))) {
+                                qhot.record(q);
+                            }
 
-                            if (tid == 0 && all_samples.size() + local_samples.size() < sample_limit) {
-                                local_samples.push_back(
-                                    to_string(N) + "," + to_string(pr) + "," + to_string(q) + ",SIEVE");
+                            // Thread-0 only SIEVE/cold-path samples:
+                            // first accepted cold hit per 10B N-distance bucket.
+                            if (tid == 0 &&
+                                sample_limit > 0 &&
+                                N >= original_start &&
+                                all_samples.size() + local_samples.size() < sample_limit) {
+                                u64 bucket = (N - original_start) / SIEVE_SAMPLE_INTERVAL;
+                                if (bucket < sieve_sample_seen.size() && !sieve_sample_seen[(size_t)bucket]) {
+                                    sieve_sample_seen[(size_t)bucket] = 1;
+                                    local_samples.push_back(
+                                        to_string(N) + "," + to_string(pr) + "," + to_string(q) + ",SIEVE");
+                                }
                             }
 
                             ok = true;
@@ -507,13 +501,62 @@ int main(int argc, char** argv) {
                         }
                     }
 
+                    // Fallback to the normal ordered anchor scan.
+                    // Skip PHOT primes to avoid double-counting tries and duplicate MR work.
+                    if (!ok) {
+                        for (u32 pr : base_primes) {
+                            if ((u64)pr > p_anchor_limit) break;
+                            if ((u64)pr >= N) break;
+
+                            bool already_tried = false;
+                            for (u32 hp : PHOT) {
+                                if (hp == pr) {
+                                    already_tried = true;
+                                    break;
+                                }
+                            }
+                            if (already_tried) continue;
+
+                            u64 q = N - pr;
+                            ++l_tries;
+
+                            if (qhot.contains_q(q) || is_prime64(q)) { // MR-only cold path
+                                ++l_verified;
+                                if (!(qhot.contains_q(q))) {
+                                    qhot.record(q);
+                                }
+
+                                // Thread-0 only SIEVE/cold-path samples:
+                            // first accepted cold hit per 10B N-distance bucket.
+                                if (tid == 0 &&
+                                    sample_limit > 0 &&
+                                    N >= original_start &&
+                                    all_samples.size() + local_samples.size() < sample_limit) {
+                                    u64 bucket = (N - original_start) / SIEVE_SAMPLE_INTERVAL;
+                                    if (bucket < sieve_sample_seen.size() && !sieve_sample_seen[(size_t)bucket]) {
+                                        sieve_sample_seen[(size_t)bucket] = 1;
+                                        local_samples.push_back(
+                                            to_string(N) + "," + to_string(pr) + "," + to_string(q) + ",SIEVE");
+                                }
+                            }
+
+                                ok = true;
+                                break;
+                            }
+                        }
+                    }
+
                     if (!ok) ++l_misses;
                 }
             }
 
-            // Merge thread-0 samples
-            if (tid == 0) {
-                chunk_samples = std::move(local_samples);
+            
+            if (!local_samples.empty()) {
+#pragma omp critical
+                {
+                    for (auto& s : local_samples)
+                        chunk_samples.push_back(std::move(s));
+                }
             }
 
 #pragma omp atomic
