@@ -5,8 +5,7 @@ High-performance **Goldbach verification engine** for extremely large ranges wit
 -  Checkpoint / Resume support  
 -  QHot witness reuse (~99.9% hit rate)  
 -  Anchor primes (bounded search)  
--  Segmented sieve fallback  
--  Sieve-Q witness dump (MR-confirmed)  
+-  MR fallback  
 -  Independent reconstruction checker  
 
 ---
@@ -33,7 +32,7 @@ This is **computational verification**, not a formal proof.
 - Only small primes `p ≤ limit` are tested  
 - Reduces search drastically  
 
-**Segmented Sieve Fallback**
+**MR Fallback**
 - Used when QHot fails (~0.08%)  
 - Produces **Miller–Rabin verified q values**
 
@@ -59,7 +58,7 @@ Sieve ≈ 0.0832%
 
 ```
 src/
-  goldbach_verifier_ckpt.cpp
+  goldbach_final.cpp
   goldbach_sieve_q_dump.cpp
 
 tools/
@@ -68,8 +67,7 @@ tools/
 data/
   checkpoints/
   samples/
-
-SHA256SUMS.txt
+  
 ```
 
 ---
@@ -77,7 +75,7 @@ SHA256SUMS.txt
 ## Build
 
 ```bash
-g++ -O3 -march=native -std=gnu++17 -fopenmp src/goldbach_verifier_ckpt.cpp -o goldbach
+g++ -O3 -march=native -std=gnu++17 -fopenmp src/goldbach_final.cpp -o goldbach
 
 g++ -O3 -march=native -std=gnu++17 -fopenmp src/goldbach_sieve_q_dump.cpp -o goldbach_sieve_q_dump
 
@@ -143,18 +141,9 @@ N,p,q
   - `q` is prime (MR)
 
 ---
-
-## Integrity
-
-```bash
-sha256sum -c SHA256SUMS.txt
-```
-
----
-
 ## Current Status
 
-- Verified: **up to 220 trillion evens (checkpointed)**  
+- Verified: **up to 500 trillion evens (checkpointed)**  
 - Misses: **0**  
 - Reconstruction check: **PASS**
 
