@@ -87,13 +87,13 @@ g++ -O3 -march=native -std=gnu++17 tools/reconstruct_sieve_q_checker.cpp -o reco
 ## Run Verifier
 
 ```bash
-./goldbach <start> <end> <block_bits> <threads> [p_anchor_limit] [sample_limit]
+./goldbach <start> <end> <block_bits> <threads> [p_anchor_limit] [sample_limit] [Qhot size]
 ```
 
 Example:
 
 ```bash
-./goldbach 4000000000000000000 4000010000000000000 24 12 100000 10000
+./goldbach 4000000000000000000 4000010000000000000 24 12 100000 10000 256
 ```
 
 ---
@@ -101,7 +101,7 @@ Example:
 ## Resume from Checkpoint
 
 ```bash
-./goldbach  0 0 24 12 100000 10000 --resume
+./goldbach  0 0 24 12 100000 10000 256 --resume
 ```
 
 ---
@@ -109,7 +109,7 @@ Example:
 ## Sieve-Q Dump Mode
 
 ```bash
-./goldbach_sieve_q_dump ... --dump-sieve-q sieve_q_witness.csv
+./goldbach_sieve_q_dump 4000000000000000000 4000000000001000000 24 1 100000 10000 --dump-sieve-q sieve_q_witness.csv
 ```
 
 Output:
